@@ -87,8 +87,9 @@ def decode_qr_and_text():
 def decode_qr_code(img):
     """
     อ่าน QR Code ด้วย pyzbar (หลัก) + OpenCV (สำรอง)
+    ลดวิธีเหลือ 2 เพื่อความเร็ว
     """
-    # === pyzbar methods (if available) ===
+    # === pyzbar (if available) ===
     if HAS_PYZBAR:
         # 1. ลอง pyzbar กับภาพต้นฉบับ
         try:
@@ -112,30 +113,6 @@ def decode_qr_code(img):
         except Exception as e:
             print(f"pyzbar error (enhanced): {e}")
 
-        # 3. ลอง pyzbar กับ threshold
-        try:
-            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-            results = pyzbar_decode(thresh)
-            if results:
-                qr_data = results[0].data.decode('utf-8')
-                print(f"[OK] pyzbar decoded (threshold): {qr_data[:80]}...")
-                return qr_data
-        except Exception as e:
-            print(f"pyzbar error (threshold): {e}")
-
-        # 4. ลอง pyzbar กับภาพขยาย (กรณี QR เล็ก) - ลดเหลือ 1.5x
-        try:
-            h, w = img.shape[:2]
-            scaled = cv2.resize(img, (int(w * 1.5), int(h * 1.5)), interpolation=cv2.INTER_CUBIC)
-            results = pyzbar_decode(scaled)
-            if results:
-                qr_data = results[0].data.decode('utf-8')
-                print(f"[OK] pyzbar decoded (scaled): {qr_data[:80]}...")
-                return qr_data
-        except Exception as e:
-            print(f"pyzbar error (scaled): {e}")
-
     # === OpenCV QRCodeDetector fallback ===
     try:
         qr = cv2.QRCodeDetector()
@@ -144,31 +121,7 @@ def decode_qr_code(img):
             print(f"[OK] OpenCV QR decoded: {qr_data[:80]}...")
             return qr_data
     except Exception as e:
-        print(f"OpenCV QR error (original): {e}")
-
-    # OpenCV with enhanced image
-    try:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        enhanced = cv2.convertScaleAbs(gray, alpha=1.5, beta=30)
-        qr = cv2.QRCodeDetector()
-        qr_data, _, _ = qr.detectAndDecode(enhanced)
-        if qr_data:
-            print(f"[OK] OpenCV QR decoded (enhanced): {qr_data[:80]}...")
-            return qr_data
-    except Exception as e:
-        print(f"OpenCV QR error (enhanced): {e}")
-
-    # OpenCV with threshold
-    try:
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        qr = cv2.QRCodeDetector()
-        qr_data, _, _ = qr.detectAndDecode(thresh)
-        if qr_data:
-            print(f"[OK] OpenCV QR decoded (threshold): {qr_data[:80]}...")
-            return qr_data
-    except Exception as e:
-        print(f"OpenCV QR error (threshold): {e}")
+        print(f"OpenCV QR error: {e}")
 
     return None
 
@@ -178,31 +131,24 @@ def extract_text_from_image(img):
     ใช้ Tesseract OCR อ่านข้อความจากภาพ
     ปรับให้เร็วสำหรับ free tier cloud
     """
-    # Resize ภาพใหญ่ลงเพื่อลด memory + เวลา OCR
+    # Resize ภาพให้เล็กมาก เพื่อให้ OCR เร็ว
     h, w = img.shape[:2]
-    max_dim = 1200
+    max_dim = 800
     if max(h, w) > max_dim:
         scale = max_dim / max(h, w)
         img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+        print(f"OCR resize to {img.shape[1]}x{img.shape[0]}")
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # วิธีเดียวที่เร็วและดีพอ: grayscale + contrast
+    # วิธีเดียวที่เร็วสุด: grayscale + contrast, OEM 1 (LSTM only = เร็วกว่า)
     try:
         enhanced = cv2.convertScaleAbs(gray, alpha=1.3, beta=20)
-        text = pytesseract.image_to_string(enhanced, lang='tha+eng', config='--psm 6 --oem 3')
+        text = pytesseract.image_to_string(enhanced, lang='tha+eng', config='--psm 6 --oem 1')
         if text.strip():
             return text.strip()
     except Exception as e:
         print(f"OCR error: {e}")
-
-    # Fallback: Otsu threshold
-    try:
-        _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-        text = pytesseract.image_to_string(otsu, lang='tha+eng', config='--psm 6 --oem 3')
-        return text.strip()
-    except Exception as e:
-        print(f"OCR fallback error: {e}")
 
     return ""
 
