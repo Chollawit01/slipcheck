@@ -53,13 +53,10 @@ def decode_qr_and_text():
         # 1. ถอดรหัส QR Code
         qr_data = decode_qr_code(img)
 
-        # 2. อ่านข้อความจากภาพ (OCR) - ข้ามถ้าได้ QR แล้ว (เร็วกว่า)
-        ocr_text = ""
-        if not qr_data:
-            print("No QR found, running OCR...")
-            ocr_text = extract_text_from_image(img)
-        else:
-            print("QR found, skipping OCR for speed")
+        # 2. อ่านข้อความจากภาพ (OCR) - ทำเสมอเพื่อดึงยอดเงิน/บัญชี
+        print("Running OCR...")
+        ocr_text = extract_text_from_image(img)
+        print(f"OCR result length: {len(ocr_text)}")
 
         # 3. วิเคราะห์ข้อมูลจากข้อความ
         slip_data = extract_slip_info(ocr_text)
