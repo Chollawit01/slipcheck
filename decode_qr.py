@@ -42,11 +42,24 @@ def decode_qr_and_text():
         img_np = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
 
+        # Resize ภาพใหญ่ลงก่อนทุกอย่างเพื่อประหยัด memory
+        h, w = img.shape[:2]
+        max_dim = 1500
+        if max(h, w) > max_dim:
+            scale = max_dim / max(h, w)
+            img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+            print(f"Resized image from {w}x{h} to {img.shape[1]}x{img.shape[0]}")
+
         # 1. ถอดรหัส QR Code
         qr_data = decode_qr_code(img)
 
-        # 2. อ่านข้อความจากภาพ (OCR)
-        ocr_text = extract_text_from_image(img)
+        # 2. อ่านข้อความจากภาพ (OCR) - ข้ามถ้าได้ QR แล้ว (เร็วกว่า)
+        ocr_text = ""
+        if not qr_data:
+            print("No QR found, running OCR...")
+            ocr_text = extract_text_from_image(img)
+        else:
+            print("QR found, skipping OCR for speed")
 
         # 3. วิเคราะห์ข้อมูลจากข้อความ
         slip_data = extract_slip_info(ocr_text)
@@ -114,10 +127,10 @@ def decode_qr_code(img):
         except Exception as e:
             print(f"pyzbar error (threshold): {e}")
 
-        # 4. ลอง pyzbar กับภาพขยาย (กรณี QR เล็ก)
+        # 4. ลอง pyzbar กับภาพขยาย (กรณี QR เล็ก) - ลดเหลือ 1.5x
         try:
             h, w = img.shape[:2]
-            scaled = cv2.resize(img, (w * 2, h * 2), interpolation=cv2.INTER_CUBIC)
+            scaled = cv2.resize(img, (int(w * 1.5), int(h * 1.5)), interpolation=cv2.INTER_CUBIC)
             results = pyzbar_decode(scaled)
             if results:
                 qr_data = results[0].data.decode('utf-8')
@@ -166,45 +179,35 @@ def decode_qr_code(img):
 def extract_text_from_image(img):
     """
     ใช้ Tesseract OCR อ่านข้อความจากภาพ
-    ลองหลายวิธี preprocessing แล้วเลือกผลที่ได้ข้อความมากที่สุด
+    ปรับให้เร็วสำหรับ free tier cloud
     """
-    best_text = ""
+    # Resize ภาพใหญ่ลงเพื่อลด memory + เวลา OCR
+    h, w = img.shape[:2]
+    max_dim = 1200
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
 
-    # เตรียมภาพพื้นฐาน
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # วิธี 1: grayscale + contrast (ดีกับสลิปพื้นขาว)
+    # วิธีเดียวที่เร็วและดีพอ: grayscale + contrast
     try:
         enhanced = cv2.convertScaleAbs(gray, alpha=1.3, beta=20)
         text = pytesseract.image_to_string(enhanced, lang='tha+eng', config='--psm 6 --oem 3')
-        if len(text.strip()) > len(best_text):
-            best_text = text.strip()
+        if text.strip():
+            return text.strip()
     except Exception as e:
-        print(f"OCR method 1 error: {e}")
+        print(f"OCR error: {e}")
 
-    # วิธี 2: Otsu threshold (ดีกับสลิปที่มี contrast ต่ำ)
+    # Fallback: Otsu threshold
     try:
         _, otsu = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
         text = pytesseract.image_to_string(otsu, lang='tha+eng', config='--psm 6 --oem 3')
-        if len(text.strip()) > len(best_text):
-            best_text = text.strip()
+        return text.strip()
     except Exception as e:
-        print(f"OCR method 2 error: {e}")
+        print(f"OCR fallback error: {e}")
 
-    # วิธี 3: denoise + adaptive threshold (ดีกับภาพถ่ายจากมือถือ)
-    try:
-        denoised = cv2.fastNlMeansDenoising(gray, None, 10, 7, 21)
-        enhanced2 = cv2.convertScaleAbs(denoised, alpha=1.5, beta=10)
-        text = pytesseract.image_to_string(enhanced2, lang='tha+eng', config='--psm 4 --oem 3')
-        if len(text.strip()) > len(best_text):
-            best_text = text.strip()
-    except Exception as e:
-        print(f"OCR method 3 error: {e}")
-
-    if not best_text:
-        print("OCR: ไม่สามารถอ่านข้อความได้จากทุกวิธี")
-
-    return best_text
+    return ""
 
 
 def extract_slip_info(text):
