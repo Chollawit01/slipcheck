@@ -1,6 +1,4 @@
 flask
-opencv-python
+opencv-python-headless
 numpy
-pytesseract
 pyzbar
-Pillow
