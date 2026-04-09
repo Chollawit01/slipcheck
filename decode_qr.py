@@ -7,6 +7,8 @@ from PIL import Image
 import io
 import os
 import shutil
+import signal
+import threading
 
 # Try to load pyzbar, fallback to OpenCV-only if DLLs missing
 try:
@@ -54,9 +56,25 @@ def decode_qr_and_text():
         qr_data = decode_qr_code(img)
 
         # 2. อ่านข้อความจากภาพ (OCR) - ทำเสมอเพื่อดึงยอดเงิน/บัญชี
-        print("Running OCR...")
-        ocr_text = extract_text_from_image(img)
-        print(f"OCR result length: {len(ocr_text)}")
+        # ใช้ timeout เพื่อกัน OCR ค้างบน free tier
+        ocr_text = ""
+        ocr_result = [None]
+
+        def run_ocr():
+            try:
+                ocr_result[0] = extract_text_from_image(img)
+            except Exception as e:
+                print(f"OCR thread error: {e}")
+
+        ocr_thread = threading.Thread(target=run_ocr)
+        ocr_thread.start()
+        ocr_thread.join(timeout=30)  # รอ OCR สูงสุด 30 วินาที
+
+        if ocr_thread.is_alive():
+            print("⏰ OCR timeout (30s) — ใช้ QR data อย่างเดียว")
+        elif ocr_result[0]:
+            ocr_text = ocr_result[0]
+            print(f"OCR result length: {len(ocr_text)}")
 
         # 3. วิเคราะห์ข้อมูลจากข้อความ
         slip_data = extract_slip_info(ocr_text)
