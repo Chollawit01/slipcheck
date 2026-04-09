@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.env
+ZBarWin64-master/
+check.js
+check_updated.js
+check_final.js
+appscript_code.js

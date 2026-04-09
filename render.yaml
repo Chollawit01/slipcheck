@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: slipcheck-api
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
