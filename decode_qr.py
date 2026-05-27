@@ -20,10 +20,15 @@ app = Flask(__name__)
 @app.route('/qr', methods=['POST'])
 def decode_qr_and_text():
     try:
+        if 'image' not in request.files:
+            return jsonify({"error": "Missing 'image' file field in request"}), 400
         file = request.files['image']
         img_bytes = file.read()
         img_np = np.frombuffer(img_bytes, np.uint8)
         img = cv2.imdecode(img_np, cv2.IMREAD_COLOR)
+
+        if img is None:
+            return jsonify({"error": "Invalid image format"}), 400
 
         # Resize ภาพใหญ่ลงก่อนเพื่อประหยัด memory
         h, w = img.shape[:2]
